@@ -54,7 +54,7 @@ from mnemosyne.core import *
 import re
 
 class FastFormat(Plugin):
-    version = "1.2.0"
+    version = "1.2.1"
     formats = [
 	# order is important!
 	# ( regex ,	   replacement )
@@ -66,7 +66,7 @@ class FastFormat(Plugin):
 	(r'\\\{', r'{'),
 	(r'\\\}', r'}'),
 
-	(r"([^\\]|^)_(.*[^\\])_", r'\1<i>\2</i>'),	  # _ ... _ to italics
+	(r"([^\\]|^)_(.*?[^\\])_", r'\1<i>\2</i>'),	  # _ ... _ to italics
 	(r'\\_', r'_'),
 
 	(r'([^\\]|^)\*(.*?[^\\])\*', r'\1<b>\2</b>'),     # * ... * to bold
