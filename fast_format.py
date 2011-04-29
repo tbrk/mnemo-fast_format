@@ -58,7 +58,9 @@ class FastFormat(Plugin):
     formats = [
 	# order is important!
 	# ( regex ,	   replacement )
-	(r'([^\\]|^)(\[.*?[^\\]\])', r'\1<i>\2</i>'),     # [ ... ] to [italics]
+	(r'([^\\]|^)(\[.*?[^\\]\])', r'\1<font color="gray"><i>\2</i></font>'),
+						    # [ ... ] to [gray italics]
+
 	(r'\\\[', r'['),
 	(r'\\\]', r']'),
 
