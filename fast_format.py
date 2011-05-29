@@ -1,6 +1,6 @@
 ##############################################################################
 #
-# fast_format.py <timbob@bigpond.com>
+# fast_format.py <tim@tbrk.org>
 #
 # Plugin providing fixed ascii shortcuts for common html tags.
 #
