@@ -110,36 +110,50 @@ default_formats = [
     (r'\\#', r'#'),
     ]
 
-class FastFormatBase():
-    name = name
-    version = version
+def compile_formats(formats):
+    results = []
+    for (ret, sub) in formats:
+        try:
+            cret = re.compile(ret, re.DOTALL)
+            results.append((cret, sub))
+        except re.error as e:
+            pass
 
-    formats = default_formats
+    return results
 
-    tag_re = re.compile('(<[^>]*>)', re.DOTALL)
-    compiled_formats = []
-    exclude_cats = []
+tag_re = re.compile('(<[^>]*>)', re.DOTALL)
 
-    def description(self):
-        return description
+def format(text, formats):
+    results = []
+    texts = tag_re.split(text)
 
-    def format(self, text):
-        results = []
-        texts = self.tag_re.split(text)
-
-        for t in texts:
-            if not t.startswith('<'):
-                for (regex, subtext) in self.compiled_formats:
+    for t in texts:
+        if not t.startswith('<'):
+            for (regex, subtext) in formats:
+                try:
                     t = regex.sub(subtext, t)
-            results.append(t)
+                except re.error as e:
+                    pass
+        results.append(t)
 
-        return "".join(results)
+    return "".join(results)
+
 
 ##############################################################################
 # Mnemosyne 1.x
 if mnemosyne_version == 1:
 
-    class FastFormat(FastFormatBase, Plugin):
+    class FastFormat(Plugin):
+        name = name
+        version = version
+        compiled_formats = []
+
+        formats = default_formats
+
+        exclude_cats = []
+
+        def description(self):
+            return description
 
         def load(self):
 
@@ -156,8 +170,7 @@ if mnemosyne_version == 1:
             else:
                 formats = self.formats
 
-            for (ret, sub) in formats:
-                self.compiled_formats.append((re.compile(ret, re.DOTALL), sub))
+            self.compiled_formats = compile_formats(formats)
 
             register_function_hook("filter_q", self.run)
             register_function_hook("filter_a", self.run)
@@ -173,7 +186,7 @@ if mnemosyne_version == 1:
         def run(self, text, card):
             if card.cat.name in self.exclude_cats:
                 return text
-            return self.format(text)
+            return format(text, self.compiled_formats)
 
     p = FastFormat()
     p.load()
@@ -191,6 +204,9 @@ elif mnemosyne_version == 2:
     class FastFormatConfigWdgt(QtGui.QWidget, ConfigurationWidget):
 
         name = name
+
+        color_badre = QtGui.QColor(255,0,0)
+        color_goodre = QtGui.QColor(0,255,0)
 
         def __init__(self, component_manager, parent):
             ConfigurationWidget.__init__(self, component_manager)
@@ -218,6 +234,7 @@ elif mnemosyne_version == 2:
             self.formats_table.setAlternatingRowColors(True)
             self.formats_table.setColumnCount(2)
             self.formats_table.horizontalHeader().setVisible(True)
+            self.formats_table.setColumnWidth(0, 200)
             self.formats_table.horizontalHeader().setStretchLastSection(True)
             self.formats_table.verticalHeader().setVisible(True)
             self.formats_table.setObjectName("formatsWidget")
@@ -237,19 +254,30 @@ elif mnemosyne_version == 2:
             self.hlayout.addWidget(self.formats_table)
             self.vlayout.addLayout(self.hlayout)
 
+            # test panels
+            self.hlayout = QtGui.QHBoxLayout()
+
+            self.input_text = QtGui.QTextEdit(self)
+            self.input_text.setMaximumHeight(60)
+            self.output_text = QtGui.QTextEdit(self)
+            self.output_text.setMaximumHeight(60)
+            self.output_text.setReadOnly(True)
+            self.input_text.setPlainText("*test* ``data`` _area_")
+
+            self.hlayout.addWidget(self.input_text)
+            self.hlayout.addWidget(self.output_text)
+
+            self.vlayout.addLayout(self.hlayout)
+
             # add "add" and "remove" buttons
             self.hlayout = QtGui.QHBoxLayout()
 
             self.add_button = QtGui.QPushButton(self)
             self.add_button.setText(QtGui.QApplication.translate("FastFormat",
                     "Add", None, QtGui.QApplication.UnicodeUTF8))
-            self.connect(self.add_button, QtCore.SIGNAL("clicked()"),
-                    self.add_clicked)
             self.del_button = QtGui.QPushButton(self)
             self.del_button.setText(QtGui.QApplication.translate("FastFormat",
                     "Remove", None, QtGui.QApplication.UnicodeUTF8))
-            self.connect(self.del_button, QtCore.SIGNAL("clicked()"),
-                    self.del_clicked)
 
             self.hlayout.addStretch()
             self.hlayout.addWidget(self.del_button)
@@ -257,7 +285,41 @@ elif mnemosyne_version == 2:
 
             self.vlayout.addLayout(self.hlayout)
 
+            # connect events
+            self.update_sample_text = False
+            self.connect(self.del_button, QtCore.SIGNAL("clicked()"),
+                    self.del_clicked)
+            self.connect(self.add_button, QtCore.SIGNAL("clicked()"),
+                    self.add_clicked)
+            self.connect(self.formats_table,
+                QtCore.SIGNAL("cellChanged(int, int)"), self.cell_changed)
+            self.connect(self.input_text,
+                QtCore.SIGNAL("textChanged()"), self.input_text_changed)
+
             self.display() # XXX
+
+        def input_text_changed(self):
+            text = self.input_text.toPlainText()
+
+            formats = self._table_to_formats()
+            compiled_formats = compile_formats(formats)
+
+            self.output_text.setHtml(format(str(text), compiled_formats))
+
+        def cell_changed(self, row, col):
+            if col == 0:
+                item = self.formats_table.item(row, col)
+                match = str(item.text())
+                try:
+                    re.compile(match, re.DOTALL)
+                    item.setTextColor(self.color_goodre)
+                    item.setToolTip('')
+                except re.error as e:
+                    item.setToolTip(str(e))
+                    item.setTextColor(self.color_badre)
+
+            if self.update_sample_text:
+                self.input_text_changed()
 
         def add_clicked(self):
             row = self.formats_table.currentRow()
@@ -275,6 +337,8 @@ elif mnemosyne_version == 2:
             for row in sorted(rows, reverse=True):
                 self.formats_table.removeRow(row)
 
+            self.input_text_changed()
+
         def _update_formats_table(self, formats):
             self.formats_table.setRowCount(len(formats))
 
@@ -289,14 +353,16 @@ elif mnemosyne_version == 2:
                 self.formats_table.setItem(i, 1, item)
 
                 i = i + 1
-            
+
         def display(self):
             self._update_formats_table(self.config()["formats"])
+            self.update_sample_text = True
+            self.input_text_changed()
                 
         def reset_to_defaults(self):
             self._update_formats_table(default_formats)
-            
-        def apply(self):
+
+        def _table_to_formats(self):
             n_rows = self.formats_table.rowCount()
 
             formats = []
@@ -305,15 +371,20 @@ elif mnemosyne_version == 2:
                 subst = str(self.formats_table.item(i, 1).text())
                 formats.append((match, subst))
 
-            self.config()["formats"] = formats
+            return formats
 
-    class FastFormat(FastFormatBase, Filter):
+        def apply(self):
+            self.config()["formats"] = self._table_to_formats()
+
+    class FastFormat(Filter):
+        name = name
+        version = version
+        compiled_formats = []
 
         def activate(self):
             formats = self.config()["formats"]
 
-            for (ret, sub) in formats:
-                self.compiled_formats.append((re.compile(ret, re.DOTALL), sub))
+            self.compiled_formats = compile_formats(formats)
 
             self.render_chain("default").\
                 register_filter(FastFormat, in_front=False)
@@ -325,7 +396,7 @@ elif mnemosyne_version == 2:
                 unregister_filter(FastFormat)
             
         def run(self, text, **render_args):
-            return self.format(text)
+            return format(text, self.compiled_formats)
 
     class FastFormatPlugin(Plugin):
         
