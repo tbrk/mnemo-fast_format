@@ -216,7 +216,10 @@ elif mnemosyne_version == 2:
             self.vlayout = QtGui.QVBoxLayout(self)
             self.hlayout = QtGui.QHBoxLayout()
 
-            formats = self.config()["formats"]
+            try:
+                formats = self.config()["formats"]
+            except KeyError:
+                formats = []
 
             # explanatory label
             self.hlayout = QtGui.QHBoxLayout()
@@ -298,7 +301,7 @@ elif mnemosyne_version == 2:
             self.connect(self.input_text,
                 QtCore.SIGNAL("textChanged()"), self.input_text_changed)
 
-            self._update_formats_table(self.config()["formats"])
+            self._update_formats_table(formats)
             self.update_sample_text = True
             self.input_text_changed()
 
@@ -395,7 +398,10 @@ elif mnemosyne_version == 2:
             self.reconfigure()
 
         def reconfigure(self):
-            formats = self.config()["formats"]
+            try:
+                formats = self.config()["formats"]
+            except KeyError:
+                formats = []
             self.compiled_formats = compile_formats(formats)
 
         def run(self, text, **render_args):
