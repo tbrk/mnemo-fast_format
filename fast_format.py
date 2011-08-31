@@ -110,6 +110,8 @@ default_formats = [
     (r'\\#', r'#'),
     ]
 
+render_chains = ["default", "card_browser"]
+
 def compile_formats(formats):
     results = []
     for (ret, sub) in formats:
@@ -296,7 +298,9 @@ elif mnemosyne_version == 2:
             self.connect(self.input_text,
                 QtCore.SIGNAL("textChanged()"), self.input_text_changed)
 
-            self.display() # XXX
+            self._update_formats_table(self.config()["formats"])
+            self.update_sample_text = True
+            self.input_text_changed()
 
         def input_text_changed(self):
             text = self.input_text.toPlainText()
@@ -354,11 +358,6 @@ elif mnemosyne_version == 2:
 
                 i = i + 1
 
-        def display(self):
-            self._update_formats_table(self.config()["formats"])
-            self.update_sample_text = True
-            self.input_text_changed()
-                
         def reset_to_defaults(self):
             self._update_formats_table(default_formats)
 
@@ -367,34 +366,38 @@ elif mnemosyne_version == 2:
 
             formats = []
             for i in range(n_rows):
-                match = str(self.formats_table.item(i, 0).text())
-                subst = str(self.formats_table.item(i, 1).text())
-                formats.append((match, subst))
+                match_item = self.formats_table.item(i, 0)
+                subst_item = self.formats_table.item(i, 1)
+
+                if match_item is not None and subst_item is not None:
+                    match = str(match_item.text())
+                    subst = str(subst_item.text())
+                    formats.append((match, subst))
 
             return formats
 
         def apply(self):
             self.config()["formats"] = self._table_to_formats()
 
+            for chain in render_chains:
+                filter = self.render_chain(chain).filter(FastFormat)
+                filter.reconfigure()
+
+            self.review_controller().update_dialog(redraw_all=True)
+
     class FastFormat(Filter):
         name = name
         version = version
-        compiled_formats = []
+        compiled_formats = None
 
-        def activate(self):
+        def __init__(self, component_manager):
+            Filter.__init__(self, component_manager)
+            self.reconfigure()
+
+        def reconfigure(self):
             formats = self.config()["formats"]
-
             self.compiled_formats = compile_formats(formats)
 
-            self.render_chain("default").\
-                register_filter(FastFormat, in_front=False)
-            self.render_chain("card_browser").\
-                register_filter(FastFormat, in_front=False)
-            
-        def deactivate(self):
-            self.render_chain("default").\
-                unregister_filter(FastFormat)
-            
         def run(self, text, **render_args):
             return format(text, self.compiled_formats)
 
@@ -403,6 +406,20 @@ elif mnemosyne_version == 2:
         name = name
         description = description
         components = [FastFormatConfig, FastFormatConfigWdgt, FastFormat]
+
+        def __init__(self, component_manager):
+            Plugin.__init__(self, component_manager)
+
+        def activate(self):
+            Plugin.activate(self)
+            for chain in render_chains:
+                self.render_chain(chain).register_filter(FastFormat,
+                    in_front=False)
+
+        def deactivate(self):
+            Plugin.deactivate(self)
+            for chain in render_chains:
+                self.render_chain(chain).unregister_filter(FastFormat)
 
     # Register plugin.
 
