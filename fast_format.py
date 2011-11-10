@@ -75,7 +75,7 @@ except ImportError:
 
 import re
 
-name = "FastFormat"
+name = "Fast Format"
 version = "1.3.0"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
@@ -404,7 +404,7 @@ elif mnemosyne_version == 2:
                 formats = []
             self.compiled_formats = compile_formats(formats)
 
-        def run(self, text, **render_args):
+        def run(self, text, card, fact_key, **render_args):
             return format(text, self.compiled_formats)
 
     class FastFormatPlugin(Plugin):
