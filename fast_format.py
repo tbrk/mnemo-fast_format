@@ -58,6 +58,15 @@
 #   * Support for Mnemosyne 2.x
 #     (Based on Peter Bienstman's filter and configuration example plugins.)
 #
+# Changes in 1.3.1
+#   * Fix a problem in Mnemosyne 2.x reported by Murray James Morrison where
+#     Asian characters are not properly formatted (due to html tags inserted by
+#     the 'increase size of non-latin characters' feature). We no longer skip
+#     over html tags. In practice, this means that the double quote (") and
+#     equals (=) characters should not be used in format patterns, and also that
+#     ascii letters and characters should probably also be avoided (for fear of
+#     messing up html formatting).
+#
 ##############################################################################
 
 try:
@@ -76,7 +85,7 @@ except ImportError:
 import re
 
 name = "Fast Format"
-version = "1.3.0"
+version = "1.3.1"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
