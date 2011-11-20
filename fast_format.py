@@ -125,21 +125,25 @@ def compile_formats(formats):
 
 tag_re = re.compile('(<[^>]*>)', re.DOTALL)
 
-def format(text, formats):
-    results = []
-    texts = tag_re.split(text)
+def format(text, formats, skip_tags=False):
+    if skip_tags:
+        results = []
+        texts = tag_re.split(text)
 
-    for t in texts:
-        if not t.startswith('<'):
-            for (regex, subtext) in formats:
-                try:
-                    t = regex.sub(subtext, t)
-                except re.error as e:
-                    pass
-        results.append(t)
+        for t in texts:
+            if not t.startswith('<'):
+                for (regex, subtext) in formats:
+                    try:
+                        t = regex.sub(subtext, t)
+                    except re.error as e:
+                        pass
+            results.append(t)
 
-    return "".join(results)
-
+        return "".join(results)
+    else:
+        for (regex, subtext) in formats:
+            text = regex.sub(subtext, text)
+        return text
 
 ##############################################################################
 # Mnemosyne 1.x
@@ -188,7 +192,7 @@ if mnemosyne_version == 1:
         def run(self, text, card):
             if card.cat.name in self.exclude_cats:
                 return text
-            return format(text, self.compiled_formats)
+            return format(text, self.compiled_formats, skip_tags=True)
 
     p = FastFormat()
     p.load()
@@ -311,18 +315,18 @@ elif mnemosyne_version == 2:
             formats = self._table_to_formats()
             compiled_formats = compile_formats(formats)
 
-            self.output_text.setHtml(format(str(text), compiled_formats))
+            self.output_text.setHtml(format(unicode(text), compiled_formats))
 
         def cell_changed(self, row, col):
             if col == 0:
                 item = self.formats_table.item(row, col)
-                match = str(item.text())
+                match = unicode(item.text())
                 try:
                     re.compile(match, re.DOTALL)
                     item.setTextColor(self.color_goodre)
                     item.setToolTip('')
                 except re.error as e:
-                    item.setToolTip(str(e))
+                    item.setToolTip(unicode(e))
                     item.setTextColor(self.color_badre)
 
             if self.update_sample_text:
@@ -373,8 +377,8 @@ elif mnemosyne_version == 2:
                 subst_item = self.formats_table.item(i, 1)
 
                 if match_item is not None and subst_item is not None:
-                    match = str(match_item.text())
-                    subst = str(subst_item.text())
+                    match = unicode(match_item.text())
+                    subst = unicode(subst_item.text())
                     formats.append((match, subst))
 
             return formats
