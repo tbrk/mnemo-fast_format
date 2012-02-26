@@ -85,7 +85,7 @@ except ImportError:
 import re
 
 name = "Fast Format"
-version = "1.3.1"
+version = "2.0.0"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
@@ -119,7 +119,7 @@ default_formats = [
     (r'\\#', r'#'),
     ]
 
-render_chains = ["default", "card_browser"]
+render_chains = ["default", "card_browser", "mnemogogo"]
 
 def compile_formats(formats):
     results = []
@@ -217,7 +217,6 @@ elif mnemosyne_version == 2:
             self.config().setdefault("formats", default_formats)
 
     class FastFormatConfigWdgt(QtGui.QWidget, ConfigurationWidget):
-
         name = name
 
         color_badre = QtGui.QColor(255,0,0)
@@ -396,8 +395,10 @@ elif mnemosyne_version == 2:
             self.config()["formats"] = self._table_to_formats()
 
             for chain in render_chains:
-                filter = self.render_chain(chain).filter(FastFormat)
-                filter.reconfigure()
+                try:
+                    filter = self.render_chain(chain).filter(FastFormat)
+                    filter.reconfigure()
+                except KeyError: pass
 
             self.review_controller().update_dialog(redraw_all=True)
 
@@ -421,7 +422,6 @@ elif mnemosyne_version == 2:
             return format(text, self.compiled_formats)
 
     class FastFormatPlugin(Plugin):
-        
         name = name
         description = description
         components = [FastFormatConfig, FastFormatConfigWdgt, FastFormat]
@@ -432,13 +432,21 @@ elif mnemosyne_version == 2:
         def activate(self):
             Plugin.activate(self)
             for chain in render_chains:
-                self.render_chain(chain).register_filter(FastFormat,
-                    in_front=False)
+                try:
+                    self.new_render_chain(chain)
+                except KeyError: pass
 
         def deactivate(self):
             Plugin.deactivate(self)
             for chain in render_chains:
-                self.render_chain(chain).unregister_filter(FastFormat)
+                try:
+                    self.render_chain(chain).unregister_filter(FastFormat)
+                except KeyError: pass
+
+        def new_render_chain(self, name):
+            if name in render_chains:
+                self.render_chain(name).register_at_front(FastFormat,
+                        ["EscapeToHtml", "EscapeToHtmlForCardBrowser"])
 
     # Register plugin.
 
