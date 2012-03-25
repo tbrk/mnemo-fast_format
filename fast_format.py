@@ -54,11 +54,11 @@
 # Changes in 1.2.0
 #   * Interface with Mnemogogo
 #
-# Changes in 1.3.0
+# Changes in 2.0.0
 #   * Support for Mnemosyne 2.x
 #     (Based on Peter Bienstman's filter and configuration example plugins.)
 #
-# Changes in 1.3.1
+# Changes in 2.0.1
 #   * Fix a problem in Mnemosyne 2.x reported by Murray James Morrison where
 #     Asian characters are not properly formatted (due to html tags inserted by
 #     the 'increase size of non-latin characters' feature). We no longer skip
@@ -66,6 +66,10 @@
 #     equals (=) characters should not be used in format patterns, and also that
 #     ascii letters and characters should probably also be avoided (for fear of
 #     messing up html formatting).
+#
+# Changes in 2.0.2
+#   * Fix the problem where characters are replaced in the paths of images and
+#     sounds.
 #
 ##############################################################################
 
@@ -85,7 +89,7 @@ except ImportError:
 import re
 
 name = "Fast Format"
-version = "2.0.0"
+version = "2.0.2"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
@@ -209,6 +213,26 @@ if mnemosyne_version == 1:
 ##############################################################################
 # Mnemosyne 2.x
 elif mnemosyne_version == 2:
+
+    strip_re = re.compile(r'(< *(?:img|sound)[^>]*>)')
+    thread_re = re.compile(u'\ufffc([0-9]*)\ufffc')
+
+    def strip_tags(text):
+        texts = strip_re.split(text)
+        tags = []
+        for i in range(1, len(texts), 2):
+            tags.append(texts[i])
+            texts[i] = u'\ufffc%d\ufffc' % ((i - 1) / 2)
+
+        return(''.join(texts), tags)
+
+    def thread_tags(text, tags):
+        texts = thread_re.split(text)
+
+        for i in range(1, len(texts), 2):
+            texts[i] = tags[int(texts[i])]
+
+        return ''.join(texts)
 
     class FastFormatConfig(Hook):
         used_for = "configuration_defaults"
@@ -419,7 +443,8 @@ elif mnemosyne_version == 2:
             self.compiled_formats = compile_formats(formats)
 
         def run(self, text, card, fact_key, **render_args):
-            return format(text, self.compiled_formats)
+            (text, tags) = strip_tags(text)
+            return thread_tags(format(text, self.compiled_formats), tags)
 
     class FastFormatPlugin(Plugin):
         name = name
