@@ -94,7 +94,7 @@ except ImportError:
 import re
 
 name = "Fast Format"
-version = "2.0.2"
+version = "2.0.3"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
