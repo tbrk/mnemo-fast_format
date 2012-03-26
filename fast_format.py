@@ -71,6 +71,11 @@
 #   * Fix the problem where characters are replaced in the paths of images and
 #     sounds.
 #
+# Changes in 2.0.3
+#   * Fix some bugs in the config screen.
+#   * Add up and down buttons for regular expressions
+#   * Highlight errors in match string.
+#
 ##############################################################################
 
 try:
@@ -139,23 +144,28 @@ def compile_formats(formats):
 tag_re = re.compile('(<[^>]*>)', re.DOTALL)
 
 def format(text, formats, skip_tags=False):
-    if skip_tags:
-        results = []
-        texts = tag_re.split(text)
+    try:
+        if skip_tags:
+            results = []
+            texts = tag_re.split(text)
 
-        for t in texts:
-            if not t.startswith('<'):
-                for (regex, subtext) in formats:
-                    try:
-                        t = regex.sub(subtext, t)
-                    except re.error as e:
-                        pass
-            results.append(t)
+            for t in texts:
+                if not t.startswith('<'):
+                    for (regex, subtext) in formats:
+                        try:
+                            t = regex.sub(subtext, t)
+                        except re.error as e:
+                            pass
+                results.append(t)
 
-        return "".join(results)
-    else:
-        for (regex, subtext) in formats:
-            text = regex.sub(subtext, text)
+            return "".join(results)
+        else:
+            for (regex, subtext) in formats:
+                text = regex.sub(subtext, text)
+            return text
+
+    except re.error as e:
+        print "formatting error: %s" % e
         return text
 
 ##############################################################################
@@ -245,6 +255,7 @@ elif mnemosyne_version == 2:
 
         color_badre = QtGui.QColor(255,0,0)
         color_goodre = QtGui.QColor(0,255,0)
+        color_unknownre = QtGui.QColor(0,0,0)
 
         def __init__(self, component_manager, parent):
             ConfigurationWidget.__init__(self, component_manager)
@@ -313,6 +324,12 @@ elif mnemosyne_version == 2:
             # add "add" and "remove" buttons
             self.hlayout = QtGui.QHBoxLayout()
 
+            self.up_button = QtGui.QToolButton(self)
+            self.up_button.setArrowType(QtCore.Qt.UpArrow)
+
+            self.down_button = QtGui.QToolButton(self)
+            self.down_button.setArrowType(QtCore.Qt.DownArrow)
+
             self.add_button = QtGui.QPushButton(self)
             self.add_button.setText(QtGui.QApplication.translate("FastFormat",
                     "Add", None, QtGui.QApplication.UnicodeUTF8))
@@ -321,6 +338,10 @@ elif mnemosyne_version == 2:
                     "Remove", None, QtGui.QApplication.UnicodeUTF8))
 
             self.hlayout.addStretch()
+            self.hlayout.addWidget(self.up_button)
+            self.hlayout.addWidget(self.down_button)
+
+            self.hlayout.addSpacing(40)
             self.hlayout.addWidget(self.del_button)
             self.hlayout.addWidget(self.add_button)
 
@@ -328,6 +349,10 @@ elif mnemosyne_version == 2:
 
             # connect events
             self.update_sample_text = False
+            self.connect(self.up_button, QtCore.SIGNAL("clicked()"),
+                    self.up_clicked)
+            self.connect(self.down_button, QtCore.SIGNAL("clicked()"),
+                    self.down_clicked)
             self.connect(self.del_button, QtCore.SIGNAL("clicked()"),
                     self.del_clicked)
             self.connect(self.add_button, QtCore.SIGNAL("clicked()"),
@@ -350,13 +375,27 @@ elif mnemosyne_version == 2:
             self.output_text.setHtml(format(unicode(text), compiled_formats))
 
         def cell_changed(self, row, col):
-            if col == 0:
-                item = self.formats_table.item(row, col)
+            text = unicode(self.input_text.toPlainText())
+
+            if col == 0 or col == 1:
+                item = self.formats_table.item(row, 0)
+                subtext = self.formats_table.item(row, 1)
                 match = unicode(item.text())
                 try:
-                    re.compile(match, re.DOTALL)
+                    r = re.compile(match, re.DOTALL)
                     item.setTextColor(self.color_goodre)
                     item.setToolTip('')
+
+                    try:
+                        if r and subtext:
+                            r.sub(unicode(subtext.text()), text)
+                            subtext.setToolTip('')
+                            subtext.setTextColor(self.color_unknownre)
+
+                    except re.error as e:
+                        subtext.setToolTip(unicode(e))
+                        subtext.setTextColor(self.color_badre)
+
                 except re.error as e:
                     item.setToolTip(unicode(e))
                     item.setTextColor(self.color_badre)
@@ -381,6 +420,46 @@ elif mnemosyne_version == 2:
                 self.formats_table.removeRow(row)
 
             self.input_text_changed()
+
+        def get_row(self, row):
+            tag_item = self.formats_table.item(row, 0)
+            font_item = self.formats_table.item(row, 1)
+
+            tag, font, size = None, None, None
+            if tag_item: tag = tag_item.text()
+            if font_item: font = font_item.text()
+
+            return (tag, font)
+
+        def set_row(self, row, (tag, font)):
+            if tag:
+                tag_item = QtGui.QTableWidgetItem()
+                tag_item.setText(tag)
+                self.formats_table.setItem(row, 0, tag_item)
+
+            if font:
+                font_item = QtGui.QTableWidgetItem()
+                font_item.setText(font)
+                self.formats_table.setItem(row, 1, font_item)
+
+        def move_row(self, old_row, new_row):
+            items = self.get_row(old_row)
+            self.formats_table.removeRow(old_row)
+            self.formats_table.insertRow(new_row)
+            self.set_row(new_row, items)
+
+        def up_clicked(self):
+            row = self.formats_table.currentRow()
+            if row > 0:
+                self.move_row(row, row - 1)
+                self.formats_table.selectRow(row - 1)
+
+        def down_clicked(self):
+            row = self.formats_table.currentRow()
+            if row + 1 < self.formats_table.rowCount():
+                self.move_row(row, row + 1)
+                self.formats_table.selectRow(row + 1)
+
 
         def _update_formats_table(self, formats):
             self.formats_table.setRowCount(len(formats))
