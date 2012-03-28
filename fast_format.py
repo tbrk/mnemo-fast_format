@@ -76,6 +76,9 @@
 #   * Add up and down buttons for regular expressions
 #   * Highlight errors in match string.
 #
+# Changes in 2.0.4
+#   * Fix a bug in the handling of embedded audio.
+#
 ##############################################################################
 
 try:
@@ -94,7 +97,7 @@ except ImportError:
 import re
 
 name = "Fast Format"
-version = "2.0.3"
+version = "2.0.4"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
@@ -224,7 +227,7 @@ if mnemosyne_version == 1:
 # Mnemosyne 2.x
 elif mnemosyne_version == 2:
 
-    strip_re = re.compile(r'(< *(?:img|sound)[^>]*>)')
+    strip_re = re.compile(r'(< *(?:img|audio)[^>]*>)')
     thread_re = re.compile(u'\ufffc([0-9]*)\ufffc')
 
     def strip_tags(text):
