@@ -552,7 +552,7 @@ elif mnemosyne_version == 2:
 
         def new_render_chain(self, name):
             if name in render_chains:
-                self.render_chain(name).register_at_front(FastFormat,
+                self.render_chain(name).register_filter_at_front(FastFormat,
                         ["EscapeToHtml", "EscapeToHtmlForCardBrowser"])
 
     # Register plugin.
