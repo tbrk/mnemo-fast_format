@@ -79,6 +79,9 @@
 # Changes in 2.0.4
 #   * Fix a bug in the handling of embedded audio.
 #
+# Changes in 2.0.5
+#   * Ported to Mnemosyne 2.5 (which uses Python 3 and PyQt5)
+#
 ##############################################################################
 
 try:
@@ -86,18 +89,28 @@ try:
   mnemosyne_version = 1
 
 except ImportError:
-  mnemosyne_version = 2
-  from PyQt4 import QtCore, QtGui
-  from mnemosyne.libmnemosyne.hook import Hook
-  from mnemosyne.libmnemosyne.filter import Filter
-  from mnemosyne.libmnemosyne.plugin import Plugin
-  from mnemosyne.libmnemosyne.ui_components.configuration_widget import \
-       ConfigurationWidget
+    try:
+      mnemosyne_version = 2
+      from PyQt4 import QtCore, QtGui
+      from mnemosyne.libmnemosyne.hook import Hook
+      from mnemosyne.libmnemosyne.filter import Filter
+      from mnemosyne.libmnemosyne.plugin import Plugin
+      from mnemosyne.libmnemosyne.ui_components.configuration_widget import \
+           ConfigurationWidget
+
+    except ImportError:
+      mnemosyne_version = 2.5
+      from PyQt5 import QtCore, QtGui, QtWidgets
+      from mnemosyne.libmnemosyne.hook import Hook
+      from mnemosyne.libmnemosyne.filter import Filter
+      from mnemosyne.libmnemosyne.plugin import Plugin
+      from mnemosyne.libmnemosyne.ui_components.configuration_widget import \
+           ConfigurationWidget
 
 import re
 
 name = "Fast Format"
-version = "2.0.4"
+version = "2.0.5"
 description = "ASCII shortcuts for common HTML tags. (v" + version + ")"
 help_text = "Use python \
   <a href=\"http://docs.python.org/howto/regex.html\">regular expressions</a>:\
@@ -168,7 +181,7 @@ def format(text, formats, skip_tags=False):
             return text
 
     except re.error as e:
-        print "formatting error: %s" % e
+        print("formatting error: %s" % e)
         return text
 
 ##############################################################################
@@ -224,7 +237,7 @@ if mnemosyne_version == 1:
     p.load()
 
 ##############################################################################
-# Mnemosyne 2.x
+# Mnemosyne 2.x < 2.5
 elif mnemosyne_version == 2:
 
     strip_re = re.compile(r'(< *(?:img|audio)[^>]*>)')
@@ -434,7 +447,8 @@ elif mnemosyne_version == 2:
 
             return (tag, font)
 
-        def set_row(self, row, (tag, font)):
+        def set_row(self, row, tag_font_tuple):
+            tag, font = tag_font_tuple
             if tag:
                 tag_item = QtGui.QTableWidgetItem()
                 tag_item.setText(tag)
@@ -532,6 +546,339 @@ elif mnemosyne_version == 2:
         name = name
         description = description
         components = [FastFormatConfig, FastFormatConfigWdgt, FastFormat]
+
+        def __init__(self, component_manager):
+            Plugin.__init__(self, component_manager)
+
+        def activate(self):
+            Plugin.activate(self)
+            for chain in render_chains:
+                try:
+                    self.new_render_chain(chain)
+                except KeyError: pass
+
+        def deactivate(self):
+            Plugin.deactivate(self)
+            for chain in render_chains:
+                try:
+                    self.render_chain(chain).unregister_filter(FastFormat)
+                except KeyError: pass
+
+        def new_render_chain(self, name):
+            if name in render_chains:
+                self.render_chain(name).register_filter_at_front(FastFormat,
+                        ["EscapeToHtml", "EscapeToHtmlForCardBrowser"])
+
+    # Register plugin.
+
+    from mnemosyne.libmnemosyne.plugin import register_user_plugin
+    register_user_plugin(FastFormatPlugin)
+
+##############################################################################
+# Mnemosyne 2.x >= 2.5
+elif mnemosyne_version == 2.5:
+
+    strip_re = re.compile(r'(< *(?:img|audio)[^>]*>)')
+    thread_re = re.compile(u'\ufffc([0-9]*)\ufffc')
+
+    def strip_tags(text):
+        texts = strip_re.split(text)
+        tags = []
+        for i in range(1, len(texts), 2):
+            tags.append(texts[i])
+            texts[i] = u'\ufffc%d\ufffc' % ((i - 1) / 2)
+
+        return(''.join(texts), tags)
+
+    def thread_tags(text, tags):
+        texts = thread_re.split(text)
+
+        for i in range(1, len(texts), 2):
+            texts[i] = tags[int(texts[i])]
+
+        return ''.join(texts)
+
+    class FastFormatConfig(Hook):
+        used_for = "configuration_defaults"
+
+        def run(self):
+            self.config().setdefault("formats", default_formats)
+
+    class FastFormatConfigWdgt(QtWidgets.QWidget, ConfigurationWidget):
+        name = name
+
+        color_badre = QtGui.QColor(255,0,0)
+        color_goodre = QtGui.QColor(0,255,0)
+        color_unknownre = QtGui.QColor(0,0,0)
+
+        def __init__(self, **kwds):
+            super().__init__(**kwds)
+            self.vlayout = QtWidgets.QVBoxLayout(self)
+            self.hlayout = QtWidgets.QHBoxLayout()
+
+            try:
+                formats = self.config()["formats"]
+            except KeyError:
+                formats = []
+
+            # explanatory label
+            self.hlayout = QtWidgets.QHBoxLayout()
+
+            self.help_label = QtWidgets.QLabel(self)
+            self.help_label.setObjectName("help_label")
+            self.help_label.setText(QtWidgets.QApplication.translate("FastFormat",
+                help_text, None))
+
+            self.hlayout.addWidget(self.help_label)
+            self.vlayout.addLayout(self.hlayout)
+
+            # add match/subst table
+            self.hlayout = QtWidgets.QHBoxLayout()
+
+            self.formats_table = QtWidgets.QTableWidget(self)
+            self.formats_table.setAlternatingRowColors(True)
+            self.formats_table.setColumnCount(2)
+            self.formats_table.horizontalHeader().setVisible(True)
+            self.formats_table.setColumnWidth(0, 200)
+            self.formats_table.horizontalHeader().setStretchLastSection(True)
+            self.formats_table.verticalHeader().setVisible(True)
+            self.formats_table.setObjectName("formatsWidget")
+
+            item = QtWidgets.QTableWidgetItem()
+            self.formats_table.setHorizontalHeaderItem(0, item)
+            self.formats_table.horizontalHeaderItem(0).setText(\
+                QtWidgets.QApplication.translate("FastFormat",
+                    "match", None))
+
+            item = QtWidgets.QTableWidgetItem()
+            self.formats_table.setHorizontalHeaderItem(1, item)
+            self.formats_table.horizontalHeaderItem(1).setText(\
+                QtWidgets.QApplication.translate("FastFormat",
+                    "replacement", None))
+
+            self.hlayout.addWidget(self.formats_table)
+            self.vlayout.addLayout(self.hlayout)
+
+            # test panels
+            self.hlayout = QtWidgets.QHBoxLayout()
+
+            self.input_text = QtWidgets.QTextEdit(self)
+            self.input_text.setMaximumHeight(60)
+            self.output_text = QtWidgets.QTextEdit(self)
+            self.output_text.setMaximumHeight(60)
+            self.output_text.setReadOnly(True)
+            self.input_text.setPlainText("*test* ``data`` _area_")
+
+            self.hlayout.addWidget(self.input_text)
+            self.hlayout.addWidget(self.output_text)
+
+            self.vlayout.addLayout(self.hlayout)
+
+            # add "add" and "remove" buttons
+            self.hlayout = QtWidgets.QHBoxLayout()
+
+            self.up_button = QtWidgets.QToolButton(self)
+            self.up_button.setArrowType(QtCore.Qt.UpArrow)
+
+            self.down_button = QtWidgets.QToolButton(self)
+            self.down_button.setArrowType(QtCore.Qt.DownArrow)
+
+            self.add_button = QtWidgets.QPushButton(self)
+            self.add_button.setText(QtWidgets.QApplication.translate("FastFormat",
+                    "Add", None))
+            self.del_button = QtWidgets.QPushButton(self)
+            self.del_button.setText(QtWidgets.QApplication.translate("FastFormat",
+                    "Remove", None))
+
+            self.hlayout.addStretch()
+            self.hlayout.addWidget(self.up_button)
+            self.hlayout.addWidget(self.down_button)
+
+            self.hlayout.addSpacing(40)
+            self.hlayout.addWidget(self.del_button)
+            self.hlayout.addWidget(self.add_button)
+
+            self.vlayout.addLayout(self.hlayout)
+
+            # connect events
+            self.update_sample_text = False
+            self.up_button.clicked.connect(self.up_clicked)
+            self.down_button.clicked.connect(self.down_clicked)
+            self.del_button.clicked.connect(self.del_clicked)
+            self.add_button.clicked.connect(self.add_clicked)
+            self.formats_table.cellChanged.connect(self.cell_changed)
+            self.input_text.textChanged.connect(self.input_text_changed)
+
+            self._update_formats_table(formats)
+            self.update_sample_text = True
+            self.input_text_changed()
+
+        def input_text_changed(self):
+            text = self.input_text.toPlainText()
+
+            formats = self._table_to_formats()
+            compiled_formats = compile_formats(formats)
+
+            self.output_text.setHtml(format(str(text), compiled_formats))
+
+        def cell_changed(self, row, col):
+            text = str(self.input_text.toPlainText())
+
+            if col == 0 or col == 1:
+                item = self.formats_table.item(row, 0)
+                subtext = self.formats_table.item(row, 1)
+                match = str(item.text())
+                try:
+                    r = re.compile(match, re.DOTALL)
+                    item.setForeground(self.color_goodre)
+                    item.setToolTip('')
+
+                    try:
+                        if r and subtext:
+                            r.sub(str(subtext.text()), text)
+                            subtext.setToolTip('')
+                            subtext.setForeground(self.color_unknownre)
+
+                    except re.error as e:
+                        subtext.setToolTip(str(e))
+                        subtext.setForeground(self.color_badre)
+
+                except re.error as e:
+                    item.setToolTip(str(e))
+                    item.setForeground(self.color_badre)
+
+            if self.update_sample_text:
+                self.input_text_changed()
+
+        def add_clicked(self):
+            row = self.formats_table.currentRow()
+
+            if row == -1:
+                self.formats_table.insertRow(self.formats_table.rowCount())
+            else:
+                self.formats_table.insertRow(row)
+
+        def del_clicked(self):
+            rows = set()
+            for item in self.formats_table.selectedItems():
+                rows.add(item.row())
+
+            for row in sorted(rows, reverse=True):
+                self.formats_table.removeRow(row)
+
+            self.input_text_changed()
+
+        def get_row(self, row):
+            tag_item = self.formats_table.item(row, 0)
+            font_item = self.formats_table.item(row, 1)
+
+            tag, font, size = None, None, None
+            if tag_item: tag = tag_item.text()
+            if font_item: font = font_item.text()
+
+            return (tag, font)
+
+        def set_row(self, row, tag_font_tuple):
+            tag, font = tag_font_tuple
+            if tag:
+                tag_item = QtWidgets.QTableWidgetItem()
+                tag_item.setText(tag)
+                self.formats_table.setItem(row, 0, tag_item)
+
+            if font:
+                font_item = QtWidgets.QTableWidgetItem()
+                font_item.setText(font)
+                self.formats_table.setItem(row, 1, font_item)
+
+        def move_row(self, old_row, new_row):
+            items = self.get_row(old_row)
+            self.formats_table.removeRow(old_row)
+            self.formats_table.insertRow(new_row)
+            self.set_row(new_row, items)
+
+        def up_clicked(self):
+            row = self.formats_table.currentRow()
+            if row > 0:
+                self.move_row(row, row - 1)
+                self.formats_table.selectRow(row - 1)
+
+        def down_clicked(self):
+            row = self.formats_table.currentRow()
+            if row + 1 < self.formats_table.rowCount():
+                self.move_row(row, row + 1)
+                self.formats_table.selectRow(row + 1)
+
+
+        def _update_formats_table(self, formats):
+            self.formats_table.setRowCount(len(formats))
+
+            i = 0
+            for (match, subst) in formats:
+                item = QtWidgets.QTableWidgetItem()
+                item.setText(match)
+                self.formats_table.setItem(i, 0, item)
+
+                item = QtWidgets.QTableWidgetItem()
+                item.setText(subst)
+                self.formats_table.setItem(i, 1, item)
+
+                i = i + 1
+
+        def reset_to_defaults(self):
+            self._update_formats_table(default_formats)
+
+        def _table_to_formats(self):
+            n_rows = self.formats_table.rowCount()
+
+            formats = []
+            for i in range(n_rows):
+                match_item = self.formats_table.item(i, 0)
+                subst_item = self.formats_table.item(i, 1)
+
+                if match_item is not None and subst_item is not None:
+                    match = str(match_item.text())
+                    subst = str(subst_item.text())
+                    formats.append((match, subst))
+
+            return formats
+
+        def apply(self):
+            self.config()["formats"] = self._table_to_formats()
+
+            for chain in render_chains:
+                try:
+                    filter = self.render_chain(chain).filter(FastFormat)
+                    filter.reconfigure()
+                except KeyError: pass
+
+            self.review_controller().update_dialog(redraw_all=True)
+
+    class FastFormat(Filter):
+        name = name
+        version = version
+        compiled_formats = None
+
+        def __init__(self, component_manager):
+            Filter.__init__(self, component_manager)
+            self.reconfigure()
+
+        def reconfigure(self):
+            try:
+                formats = self.config()["formats"]
+            except KeyError:
+                formats = []
+            self.compiled_formats = compile_formats(formats)
+
+        def run(self, text, card, fact_key, **render_args):
+            (text, tags) = strip_tags(text)
+            return thread_tags(format(text, self.compiled_formats), tags)
+
+    class FastFormatPlugin(Plugin):
+        name = name
+        description = description
+        components = [FastFormatConfig, FastFormatConfigWdgt, FastFormat]
+
+        supported_API_level = 2
 
         def __init__(self, component_manager):
             Plugin.__init__(self, component_manager)
